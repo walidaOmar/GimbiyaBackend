@@ -36,7 +36,10 @@ export const CreateProductSchema = z.object({
   priceKobo:       KoboAmountSchema.min(1, 'Price must be greater than 0'),
   initialStock:    z.number().int().nonnegative(),
   categorySlug:    z.string().min(1),
-  assignedState:   z.nativeEnum(NigerianState).exclude([NigerianState.GLOBAL]),
+  // ✅ FIXED: Replaced .exclude with .refine
+  assignedState:   z.nativeEnum(NigerianState).refine(val => val !== NigerianState.GLOBAL, {
+                     message: "Product state cannot be GLOBAL"
+                   }),
   buildingFloor:   z.enum(['LEVEL_1', 'LEVEL_2']),
   imageUrls:       z.array(z.string().url()).max(5).optional(),
 });
@@ -113,7 +116,10 @@ export const PaginationSchema = z.object({
 
 // ─── CATALOG QUERY ────────────────────────────────────────────────────────────
 export const CatalogQuerySchema = z.object({
-  assignedState:  z.nativeEnum(NigerianState).exclude([NigerianState.GLOBAL]),
+  // ✅ FIXED: Replaced .exclude with .refine
+  assignedState:  z.nativeEnum(NigerianState).refine(val => val !== NigerianState.GLOBAL, {
+                    message: "Catalog query state cannot be GLOBAL"
+                  }),
   buildingFloor:  z.enum(['LEVEL_1', 'LEVEL_2']).optional(),
   categorySlug:   z.string().optional(),
   searchQuery:    z.string().max(100).optional(),
