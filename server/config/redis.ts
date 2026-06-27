@@ -10,23 +10,35 @@ let redisClient: Redis | null = null;
 export function getRedis(): Redis {
   if (redisClient) return redisClient;
 
-  const url = process.env.REDIS_URL;
+  let url = process.env.REDIS_URL;
+  
+  // Clean up any accidental wrapping quotes or spaces from the string
+  if (url) {
+    url = url.replace(/['"]/g, '').trim();
+  }
+
   if (!url) {
-    console.warn('[Redis] REDIS_URL not set. Redis features will be unavailable.');
-    // Return a no-op mock so the app doesn't crash in dev without Redis
+    console.warn('[Redis] REDIS_URL not set or empty. Redis features will be unavailable.');
     return createMockRedis();
   }
 
-  redisClient = new Redis(url, {
-    maxRetriesPerRequest: 3,
-    enableReadyCheck: false,
-    lazyConnect: true,
-  });
+  try {
+    // Attempt instantiation with the sanitized URL string
+    redisClient = new Redis(url, {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
 
-  redisClient.on('connect', () => console.log('[Redis] Connected.'));
-  redisClient.on('error', (err) => console.error('[Redis] Error:', err.message));
+    redisClient.on('connect', () => console.log('[Redis] Connected.'));
+    redisClient.on('error', (err) => console.error('[Redis] Connection Error:', err.message));
 
-  return redisClient;
+    return redisClient;
+  } catch (error: any) {
+    console.error('[Redis] critical parsing error:', error.message);
+    console.warn('[Redis] Falling back to Mock Redis to prevent server crash.');
+    return createMockRedis();
+  }
 }
 
 // Minimal mock for local development without Redis
