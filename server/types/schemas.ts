@@ -19,6 +19,13 @@ export const NigerianPhoneSchema = z
   .string()
   .regex(/^(\+234|0)[789][01]\d{8}$/, 'Must be a valid Nigerian phone number');
 
+// States available to non-global users (excludes Global which is CEO-only)
+export const RegionalStateSchema = z.enum([
+  NigerianState.ABUJA,
+  NigerianState.KANO,
+  NigerianState.KADUNA,
+]);
+
 // ─── AUTH / USER ──────────────────────────────────────────────────────────────
 export const RegisterUserSchema = z.object({
   name:          z.string().min(2).max(100),
@@ -36,10 +43,7 @@ export const CreateProductSchema = z.object({
   priceKobo:       KoboAmountSchema.min(1, 'Price must be greater than 0'),
   initialStock:    z.number().int().nonnegative(),
   categorySlug:    z.string().min(1),
-  // ✅ FIXED: Replaced .exclude with .refine
-  assignedState:   z.nativeEnum(NigerianState).refine(val => val !== NigerianState.GLOBAL, {
-                     message: "Product state cannot be GLOBAL"
-                   }),
+  assignedState:   RegionalStateSchema,
   buildingFloor:   z.enum(['LEVEL_1', 'LEVEL_2']),
   imageUrls:       z.array(z.string().url()).max(5).optional(),
 });
@@ -87,9 +91,9 @@ export const InboundManifestSchema = z.object({
 
 // ─── ORDER / DELIVERY ─────────────────────────────────────────────────────────
 export const OtpHandoverSchema = z.object({
-  orderId:           MongoIdSchema,
-  submittedOtp:      z.string().length(4, 'OTP must be exactly 4 digits').regex(/^\d{4}$/),
-  signatureBase64:   z.string().min(100, 'Signature data is required'),
+  orderId:         MongoIdSchema,
+  submittedOtp:    z.string().length(4, 'OTP must be exactly 4 digits').regex(/^\d{4}$/),
+  signatureBase64: z.string().min(100, 'Signature data is required'),
 });
 
 export const UpdateLocationSchema = z.object({
@@ -116,10 +120,7 @@ export const PaginationSchema = z.object({
 
 // ─── CATALOG QUERY ────────────────────────────────────────────────────────────
 export const CatalogQuerySchema = z.object({
-  // ✅ FIXED: Replaced .exclude with .refine
-  assignedState:  z.nativeEnum(NigerianState).refine(val => val !== NigerianState.GLOBAL, {
-                    message: "Catalog query state cannot be GLOBAL"
-                  }),
+  assignedState:  RegionalStateSchema,
   buildingFloor:  z.enum(['LEVEL_1', 'LEVEL_2']).optional(),
   categorySlug:   z.string().optional(),
   searchQuery:    z.string().max(100).optional(),
