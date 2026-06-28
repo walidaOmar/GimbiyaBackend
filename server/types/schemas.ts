@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { UserRole, NigerianState, BusinessSector, InventoryReason } from './index';
+import { UserRole, NigerianState, InventoryReason } from './index';
 
 // ─── PRIMITIVES ───────────────────────────────────────────────────────────────
 export const MongoIdSchema = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid MongoDB ObjectId');
@@ -19,7 +19,8 @@ export const NigerianPhoneSchema = z
   .string()
   .regex(/^(\+234|0)[789][01]\d{8}$/, 'Must be a valid Nigerian phone number');
 
-// States available to non-global users (excludes Global which is CEO-only)
+// Regional states only — excludes Global which is CEO-only.
+// z.nativeEnum().exclude() does not exist in Zod — use z.enum() explicitly.
 export const RegionalStateSchema = z.enum([
   NigerianState.ABUJA,
   NigerianState.KANO,
@@ -120,12 +121,12 @@ export const PaginationSchema = z.object({
 
 // ─── CATALOG QUERY ────────────────────────────────────────────────────────────
 export const CatalogQuerySchema = z.object({
-  assignedState:  RegionalStateSchema,
-  buildingFloor:  z.enum(['LEVEL_1', 'LEVEL_2']).optional(),
-  categorySlug:   z.string().optional(),
-  searchQuery:    z.string().max(100).optional(),
-  minPriceKobo:   KoboAmountSchema.optional(),
-  maxPriceKobo:   KoboAmountSchema.optional(),
+  assignedState: RegionalStateSchema,
+  buildingFloor: z.enum(['LEVEL_1', 'LEVEL_2']).optional(),
+  categorySlug:  z.string().optional(),
+  searchQuery:   z.string().max(100).optional(),
+  minPriceKobo:  KoboAmountSchema.optional(),
+  maxPriceKobo:  KoboAmountSchema.optional(),
 }).merge(PaginationSchema);
 
 // ─── DATE RANGE ───────────────────────────────────────────────────────────────
