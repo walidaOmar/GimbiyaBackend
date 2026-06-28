@@ -20,7 +20,7 @@ export interface IUser extends Document {
   kycStatus: KycStatus;
   kycDocumentUrls: string[];
   onboardedBy: Types.ObjectId | null;
-  monnifySubAccountCode: string | null;   // Set on merchant KYC approval
+  monnifySubAccountCode: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,11 +31,11 @@ const UserSchema = new Schema<IUser>(
     email:         { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     firebaseUid:   { type: String, required: true, unique: true, index: true },
     role: {
-      type:    String,
-      enum:    Object.values(UserRole),
-      default: UserRole.BUYER,
+      type:     String,
+      enum:     Object.values(UserRole),
+      default:  UserRole.BUYER,
       required: true,
-      index:   true,
+      index:    true,
     },
     assignedState: {
       type:     String,
@@ -53,11 +53,6 @@ const UserSchema = new Schema<IUser>(
   },
   {
     timestamps: true,
-    // Compound indexes for the most common query patterns
-    indexes: [
-      { fields: { role: 1, assignedState: 1 } },
-      { fields: { kycStatus: 1, role: 1 } },
-    ],
   }
 );
 

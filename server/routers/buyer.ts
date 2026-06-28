@@ -107,21 +107,6 @@ export const buyerRouter = router({
     }),
 
   // ── ESCROW CHECKOUT ───────────────────────────────────────────────────────
-  /**
-   * initializeEscrowCheckout
-   *
-   * GEF Explanation (§8):
-   * 1. Validate all cart items exist and have sufficient stock.
-   * 2. Snapshot current prices (prices can change — we lock in the checkout price).
-   * 3. Run calculateOrderPricing() — the ONLY place gross/fee/net are computed.
-   * 4. Use a MongoDB session+transaction to:
-   *    a. Atomically decrement stock via $inc with $gte guard.
-   *    b. Create the Order document with status PENDING and escrowStatus LOCKED.
-   *    c. Append an EscrowLedger LOCK entry.
-   *    d. Write InventoryAudit entries for each item deducted.
-   * 5. Generate OTP pair — return rawOtp to caller (buyer UI), store only hash.
-   * 6. Clear the buyer's cart.
-   */
   initializeEscrowCheckout: buyerProcedure
     .input(CheckoutSchema)
     .mutation(async ({ input, ctx }) => {
@@ -139,11 +124,8 @@ export const buyerRouter = router({
         });
       }
 
-      // Build a lookup map
       const productMap = new Map(products.map((p) => [p._id.toString(), p]));
 
-      // Validate all items have enough stock and belong to the same merchant
-      // (MVP: single-merchant checkout per order)
       let merchantId: mongoose.Types.ObjectId | null = null;
       let orderState: NigerianState | null = null;
 
@@ -173,6 +155,11 @@ export const buyerRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not resolve merchant.' });
       }
 
+      // Cast to concrete types — TS cannot track assignments made inside
+      // .map() callbacks so merchantId narrows to never after the null guard above.
+      const resolvedMerchantId = merchantId as mongoose.Types.ObjectId;
+      const resolvedOrderState = orderState as NigerianState;
+
       // Step 2: Calculate pricing via the Single Source of Truth
       const pricing = calculateOrderPricing(
         pricedItems.map((i) => ({ unitPriceKobo: i.unitPriceKobo, quantity: i.quantity }))
@@ -189,7 +176,7 @@ export const buyerRouter = router({
         // 4a. Decrement stock atomically for each item
         for (const item of pricedItems) {
           const result = await Product.findOneAndUpdate(
-            { _id: item.productId, stock: { $gte: item.quantity } }, // $gte guard prevents over-sell
+            { _id: item.productId, stock: { $gte: item.quantity } },
             { $inc: { stock: -item.quantity, soldCount: item.quantity } },
             { session, new: true }
           );
@@ -207,9 +194,9 @@ export const buyerRouter = router({
         // 4c. Create the Order document
         const [order] = await Order.create(
           [{
-            orderRef:        generateOrderRef(orderState, orderCount + 1),
+            orderRef:        generateOrderRef(resolvedOrderState, orderCount + 1),
             buyerId,
-            merchantId,
+            merchantId:      resolvedMerchantId,
             riderId:         null,
             items:           pricedItems,
             grossTotalKobo:  pricing.grossTotalKobo,
@@ -219,7 +206,7 @@ export const buyerRouter = router({
             escrowStatus:    EscrowStatus.LOCKED,
             riderOtpHash:    otpHash,
             shippingAddress,
-            assignedState:   orderState,
+            assignedState:   resolvedOrderState,
             timeline: [{
               status:    OrderStatus.PENDING,
               timestamp: new Date(),
@@ -264,7 +251,7 @@ export const buyerRouter = router({
         await CartItem.deleteMany({ userId: buyerId });
 
         // Step 6: Notify merchant via SSE
-        notifyUser(merchantId.toString(), 'order:status_changed', {
+        notifyUser(resolvedMerchantId.toString(), 'order:status_changed', {
           orderId:   order._id.toString(),
           orderRef:  order.orderRef,
           newStatus: OrderStatus.PENDING,
@@ -272,14 +259,14 @@ export const buyerRouter = router({
         });
 
         return {
-          success:      true,
-          orderId:      order._id.toString(),
-          orderRef:     order.orderRef,
-          rawOtp,                          // ← Shown to buyer ONLY, ONCE
-          grossTotalNaira: pricing.grossTotalNaira,
+          success:          true,
+          orderId:          order._id.toString(),
+          orderRef:         order.orderRef,
+          rawOtp,
+          grossTotalNaira:  pricing.grossTotalNaira,
           platformFeeNaira: pricing.platformFeeNaira,
           merchantNetNaira: pricing.merchantNetNaira,
-          message: 'Order placed successfully. Funds locked in escrow.',
+          message:          'Order placed successfully. Funds locked in escrow.',
         };
       } catch (err) {
         await session.abortTransaction();
@@ -295,9 +282,9 @@ export const buyerRouter = router({
     .query(async ({ input, ctx }) => {
       const order = await Order.findOne({
         _id:     input.orderId,
-        buyerId: ctx.user.mongoId, // Buyers can only view their own orders
+        buyerId: ctx.user.mongoId,
       })
-        .select('-riderOtpHash')   // Hash is NEVER returned to any client
+        .select('-riderOtpHash')
         .lean();
 
       if (!order) throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found.' });
@@ -340,7 +327,6 @@ export const buyerRouter = router({
       const session = await mongoose.startSession();
       session.startTransaction();
       try {
-        // Restore stock for each item
         for (const item of order.items) {
           await Product.findByIdAndUpdate(
             item.productId,
